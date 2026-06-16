@@ -1,7 +1,18 @@
-export type ColorName = "green" | "blue" | "orange" | "red" | "purple" | "teal";
+export type ColorName =
+  | "green"
+  | "blue"
+  | "orange"
+  | "red"
+  | "purple"
+  | "teal";
+
 export type ShiftType = "Frueh" | "Spaet" | "Nacht";
+
 export type Line = "SVP03" | "SVP05" | "SVP06" | "SVP09";
+
 export type CompletionStatus = "done" | "blocked" | "skipped";
+
+export type ShiftNoteKind = "handover" | "warning" | "info";
 
 export interface Activity {
   id: number;
@@ -18,7 +29,7 @@ export interface ShiftActivity {
   nameSnapshot: string;
   colorSnapshot: ColorName;
   parentIdSnapshot: number | null;
-  sortOrderSnapshot?: number;
+  sortOrderSnapshot: number;
 }
 
 export interface Completion {
@@ -34,7 +45,7 @@ export interface ShiftNote {
   id: number;
   text: string;
   createdAt: number;
-  kind: "handover" | "warning" | "info";
+  kind: ShiftNoteKind;
 }
 
 export interface Shift {
