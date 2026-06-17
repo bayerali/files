@@ -57,10 +57,6 @@ function statusLabel(status: CompletionStatus): string {
   }
 }
 
-function getNextId(db: DB): number {
-  return db.nextId;
-}
-
 export function ExecutionBoardPage({
   db,
   setDB,
@@ -163,7 +159,7 @@ export function ExecutionBoardPage({
             completions: [
               ...s.completions,
               {
-                id: getNextId(db),
+                id: db.nextId,
                 shiftActivityId: activity.id,
                 status,
                 timestamp: Date.now(),
@@ -202,7 +198,7 @@ export function ExecutionBoardPage({
               notes: [
                 ...s.notes,
                 {
-                  id: getNextId(db),
+                  id: db.nextId,
                   text,
                   kind,
                   createdAt: Date.now(),
