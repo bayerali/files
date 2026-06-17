@@ -20,17 +20,20 @@ export function loadDB(): DB {
   }
 
   try {
+    const raw = window.localStorage.getItem(STORAGE_KEY);
+
+    if (raw) {
+      return migrateDB(JSON.parse(raw));
+    }
+
     const seeded = window.__SEED_DB__;
     if (seeded) {
-      return migrateDB(seeded);
+      const db = migrateDB(seeded);
+      saveDB(db);
+      return db;
     }
 
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (!raw) {
-      return defaultDB();
-    }
-
-    return migrateDB(JSON.parse(raw));
+    return defaultDB();
   } catch {
     return defaultDB();
   }
@@ -53,7 +56,10 @@ export function newId(db: DB): number {
 }
 
 export function resetDB(): DB {
-  const db = defaultDB();
+  const seeded =
+    typeof window !== "undefined" ? window.__SEED_DB__ : undefined;
+
+  const db = seeded ? migrateDB(seeded) : defaultDB();
   saveDB(db);
   return db;
 }
@@ -63,6 +69,8 @@ function migrateDB(input: unknown): DB {
     shifts?: Array<Partial<Shift>>;
     activities?: Array<Partial<Activity>>;
   };
+
+  const fallback = defaultDB();
 
   const activities: Activity[] = Array.isArray(raw.activities)
     ? raw.activities.map((act, index) => ({
@@ -76,7 +84,7 @@ function migrateDB(input: unknown): DB {
             : null,
         archived: Boolean(act.archived ?? false),
       }))
-    : defaultDB().activities;
+    : fallback.activities;
 
   const shifts: Shift[] = Array.isArray(raw.shifts)
     ? raw.shifts.map((shift, index) => ({
@@ -135,7 +143,11 @@ function migrateCompletions(input: unknown): Completion[] {
   if (!Array.isArray(input)) return [];
 
   return input.map((item, index) => {
-    const c = item as Partial<Completion> & { status?: unknown; note?: unknown };
+    const c = item as Partial<Completion> & {
+      status?: unknown;
+      note?: unknown;
+    };
+
     return {
       id: Number(c.id ?? index + 1),
       shiftActivityId: Number(c.shiftActivityId ?? 0),
