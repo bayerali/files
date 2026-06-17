@@ -49,51 +49,6 @@ export default function App() {
     saveDB(next);
   };
 
-  const upsertCompletion = (
-    shiftId: number,
-    shiftActivityId: number,
-    status: Completion["status"] = "done"
-  ) => {
-    const next: DB = {
-      ...db,
-      shifts: db.shifts.map((shift) => {
-        if (shift.id !== shiftId) return shift;
-
-        const existing = shift.completions.find(
-          (c) => c.shiftActivityId === shiftActivityId
-        );
-
-        if (!existing) {
-          const completion: Completion = {
-            id: db.nextId,
-            shiftActivityId,
-            status,
-            timestamp: Date.now(),
-            note: "",
-            imageData: null,
-          };
-
-          return {
-            ...shift,
-            completions: [...shift.completions, completion],
-          };
-        }
-
-        return {
-          ...shift,
-          completions: shift.completions.map((c) =>
-            c.shiftActivityId === shiftActivityId
-              ? { ...c, status, timestamp: Date.now() }
-              : c
-          ),
-        };
-      }),
-      nextId: db.nextId + 1,
-    };
-
-    setDB(next);
-  };
-
   const completeActivity = (shiftId: number, shiftActivityId: number) => {
     const shift = db.shifts.find((s) => s.id === shiftId);
     if (!shift) return;
@@ -104,7 +59,50 @@ export default function App() {
 
     if (existing?.status === "done") return;
 
-    upsertCompletion(shiftId, shiftActivityId, "done");
+    if (existing) {
+      const next: DB = {
+        ...db,
+        shifts: db.shifts.map((s) =>
+          s.id !== shiftId
+            ? s
+            : {
+                ...s,
+                completions: s.completions.map((c) =>
+                  c.shiftActivityId === shiftActivityId
+                    ? { ...c, status: "done", timestamp: Date.now() }
+                    : c
+                ),
+              }
+        ),
+      };
+
+      setDB(next);
+      return;
+    }
+
+    const completion: Completion = {
+      id: db.nextId,
+      shiftActivityId,
+      status: "done",
+      timestamp: Date.now(),
+      note: "",
+      imageData: null,
+    };
+
+    const next: DB = {
+      ...db,
+      nextId: db.nextId + 1,
+      shifts: db.shifts.map((s) =>
+        s.id !== shiftId
+          ? s
+          : {
+              ...s,
+              completions: [...s.completions, completion],
+            }
+      ),
+    };
+
+    setDB(next);
   };
 
   const undoCompleteActivity = (shiftId: number, shiftActivityId: number) => {
