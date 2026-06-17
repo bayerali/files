@@ -8,19 +8,29 @@ import type {
 
 const STORAGE_KEY = "produktions-dashboard-db-v2";
 
+declare global {
+  interface Window {
+    __SEED_DB__?: unknown;
+  }
+}
+
 export function loadDB(): DB {
   if (typeof window === "undefined") {
     return defaultDB();
   }
 
   try {
+    const seeded = window.__SEED_DB__;
+    if (seeded) {
+      return migrateDB(seeded);
+    }
+
     const raw = window.localStorage.getItem(STORAGE_KEY);
     if (!raw) {
       return defaultDB();
     }
 
-    const parsed = JSON.parse(raw);
-    return migrateDB(parsed);
+    return migrateDB(JSON.parse(raw));
   } catch {
     return defaultDB();
   }
@@ -32,7 +42,7 @@ export function saveDB(db: DB): void {
   try {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(db));
   } catch {
-    // fail silently for now
+    // fail silently
   }
 }
 
@@ -125,7 +135,7 @@ function migrateCompletions(input: unknown): Completion[] {
   if (!Array.isArray(input)) return [];
 
   return input.map((item, index) => {
-    const c = item as Partial<Completion>;
+    const c = item as Partial<Completion> & { status?: unknown; note?: unknown };
     return {
       id: Number(c.id ?? index + 1),
       shiftActivityId: Number(c.shiftActivityId ?? 0),
