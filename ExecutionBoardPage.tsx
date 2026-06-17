@@ -1,6 +1,5 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import type { CompletionStatus, DB, Shift, ShiftActivity } from "../types";
-import { newId } from "../storage";
 import { NavBar } from "./NavBar";
 
 const SHIFT_LABEL: Record<Shift["shiftType"], string> = {
@@ -58,6 +57,10 @@ function statusLabel(status: CompletionStatus): string {
   }
 }
 
+function getNextId(db: DB): number {
+  return db.nextId;
+}
+
 export function ExecutionBoardPage({
   db,
   setDB,
@@ -68,23 +71,15 @@ export function ExecutionBoardPage({
 }: ExecutionBoardPageProps) {
   const dateLabel = formatDate(shift.date);
 
-  const [selectedParentId, setSelectedParentId] = useState<number | null>(() => {
-    const topLevel = shift.shiftActivities.find((a) => a.parentIdSnapshot === null);
-    return topLevel?.id ?? null;
-  });
-
-  const [selectedChildId, setSelectedChildId] = useState<number | null>(null);
-  const [noteText, setNoteText] = useState("");
-
-  const completionsByShiftActivityId = useMemo(() => {
-    return new Map(shift.completions.map((c) => [c.shiftActivityId, c]));
-  }, [shift.completions]);
-
   const topLevelParents = useMemo(() => {
     return shift.shiftActivities
       .filter((a) => a.parentIdSnapshot === null)
       .sort((a, b) => a.sortOrderSnapshot - b.sortOrderSnapshot);
   }, [shift.shiftActivities]);
+
+  const [selectedParentId, setSelectedParentId] = useState<number | null>(() => {
+    return topLevelParents[0]?.id ?? null;
+  });
 
   const firstLevelChildren = useMemo(() => {
     if (selectedParentId === null) return [];
@@ -93,6 +88,21 @@ export function ExecutionBoardPage({
       .sort((a, b) => a.sortOrderSnapshot - b.sortOrderSnapshot);
   }, [shift.shiftActivities, selectedParentId]);
 
+  const [selectedChildId, setSelectedChildId] = useState<number | null>(null);
+  const [noteText, setNoteText] = useState("");
+
+  useEffect(() => {
+    if (firstLevelChildren.length === 0) {
+      setSelectedChildId(null);
+      return;
+    }
+
+    const stillValid = firstLevelChildren.some((child) => child.id === selectedChildId);
+    if (!stillValid) {
+      setSelectedChildId(firstLevelChildren[0].id);
+    }
+  }, [firstLevelChildren, selectedChildId]);
+
   const visibleTasks = useMemo(() => {
     if (selectedChildId === null) return [];
     return shift.shiftActivities
@@ -100,11 +110,23 @@ export function ExecutionBoardPage({
       .sort((a, b) => a.sortOrderSnapshot - b.sortOrderSnapshot);
   }, [shift.shiftActivities, selectedChildId]);
 
-  const selectedParent = topLevelParents.find((p) => p.id === selectedParentId) ?? null;
-  const selectedChild = firstLevelChildren.find((c) => c.id === selectedChildId) ?? null;
+  const completionsByShiftActivityId = useMemo(() => {
+    return new Map(shift.completions.map((c) => [c.shiftActivityId, c]));
+  }, [shift.completions]);
+
+  const selectedParent =
+    topLevelParents.find((p) => p.id === selectedParentId) ?? null;
+
+  const selectedChild =
+    firstLevelChildren.find((c) => c.id === selectedChildId) ?? null;
 
   const totalLeafTasks = useMemo(() => {
-    const parentIds = new Set(shift.shiftActivities.map((a) => a.parentIdSnapshot).filter((v) => v !== null));
+    const parentIds = new Set(
+      shift.shiftActivities
+        .map((a) => a.parentIdSnapshot)
+        .filter((v): v is number => v !== null)
+    );
+
     return shift.shiftActivities.filter((a) => !parentIds.has(a.id)).length;
   }, [shift.shiftActivities]);
 
@@ -115,6 +137,7 @@ export function ExecutionBoardPage({
   const saveStatus = (activity: ShiftActivity, status: CompletionStatus) => {
     if (status === "done") {
       const existing = completionsByShiftActivityId.get(activity.id);
+
       if (existing?.status === "done") {
         onUndoCompleteActivity(shift.id, activity.id);
         return;
@@ -126,12 +149,13 @@ export function ExecutionBoardPage({
       }
     }
 
+    const existing = completionsByShiftActivityId.get(activity.id);
+
     const next: DB = {
       ...db,
+      nextId: existing ? db.nextId : db.nextId + 1,
       shifts: db.shifts.map((s) => {
         if (s.id !== shift.id) return s;
-
-        const existing = s.completions.find((c) => c.shiftActivityId === activity.id);
 
         if (!existing) {
           return {
@@ -139,7 +163,7 @@ export function ExecutionBoardPage({
             completions: [
               ...s.completions,
               {
-                id: newId(db),
+                id: getNextId(db),
                 shiftActivityId: activity.id,
                 status,
                 timestamp: Date.now(),
@@ -170,6 +194,7 @@ export function ExecutionBoardPage({
 
     const next: DB = {
       ...db,
+      nextId: db.nextId + 1,
       shifts: db.shifts.map((s) =>
         s.id === shift.id
           ? {
@@ -177,7 +202,7 @@ export function ExecutionBoardPage({
               notes: [
                 ...s.notes,
                 {
-                  id: newId(db),
+                  id: getNextId(db),
                   text,
                   kind,
                   createdAt: Date.now(),
@@ -195,6 +220,7 @@ export function ExecutionBoardPage({
   return (
     <>
       <NavBar current="shift" onNavigateHome={onBack} />
+
       <main className="main dashboard-layout">
         <section className="card">
           <div className="row">
@@ -232,15 +258,13 @@ export function ExecutionBoardPage({
           <article className="card">
             <h2 className="card-title">Bereiche</h2>
             <p className="card-subtitle">Wähle Primär oder Sekundär als Hauptbereich.</p>
+
             <div className="parent-list">
               {topLevelParents.map((parent) => (
                 <button
                   key={parent.id}
                   className={`parent-pill ${selectedParentId === parent.id ? "parent-pill--active" : ""}`}
-                  onClick={() => {
-                    setSelectedParentId(parent.id);
-                    setSelectedChildId(null);
-                  }}
+                  onClick={() => setSelectedParentId(parent.id)}
                 >
                   {parent.nameSnapshot}
                 </button>
@@ -310,15 +334,21 @@ export function ExecutionBoardPage({
 
                       <div className="parent-list">
                         <button
-                          className={`btn-primary`}
+                          className="btn-primary"
                           onClick={() => saveStatus(task, "done")}
                         >
                           {completion?.status === "done" ? "Erledigt rückgängig" : "Erledigt"}
                         </button>
-                        <button className="btn-ghost" onClick={() => saveStatus(task, "blocked")}>
+                        <button
+                          className="btn-ghost"
+                          onClick={() => saveStatus(task, "blocked")}
+                        >
                           Blockiert
                         </button>
-                        <button className="btn-ghost" onClick={() => saveStatus(task, "skipped")}>
+                        <button
+                          className="btn-ghost"
+                          onClick={() => saveStatus(task, "skipped")}
+                        >
                           Übersprungen
                         </button>
                       </div>
